@@ -1,0 +1,40 @@
+# GR00T N1.7 co-training on RoboTwin 2.0 (50 tasks, clean + randomized).
+# Source of truth for the A800 launch script. Paths below are A800-side.
+
+experiment_name: n17_robotwin50_clean_rand_rel_eef
+embodiment_tag: NEW_EMBODIMENT
+modality_config_path: examples/RoboTwin/robotwin_aloha_config.py
+
+base_model_path: /data/efs/vepfs_20260622/licheng.yang/Isaac-GR00T/checkpoints/GR00T-N1.7-3B
+cosmos_backbone_path: /data/efs/vepfs_20260622/licheng.yang/Isaac-GR00T/checkpoints/Cosmos-Reason2-2B
+dataset_root: /data/efs/vepfs_20260622/licheng.yang/datasets/robotwin2.0_gr00t_lerobot
+dataset_paths_file: /data/efs/vepfs_20260622/licheng.yang/datasets/robotwin2.0_gr00t_lerobot/dataset_paths.txt
+output_dir: /data/efs/user/licheng.yang/checkpoints/gr00t/n17_robotwin50_clean_rand
+
+# Data mixture: 50 task datasets, each = clean_50 + randomized_500.
+# alpha=0 -> equal sampling per task (not per-frame).
+ds_weights_alpha: 0.0
+
+num_gpus: 8
+global_batch_size: 64
+gradient_accumulation_steps: 1
+max_steps: 40000
+save_steps: 2000
+save_total_limit: 5
+learning_rate: 1.0e-4
+weight_decay: 1.0e-5
+warmup_ratio: 0.05
+dataloader_num_workers: 4
+state_dropout_prob: 0.2
+
+tune_llm: false
+tune_visual: true
+tune_projector: true
+tune_diffusion_model: true
+use_percentiles: true
+use_wandb: false
+
+action_horizon: 16
+cameras: [head, left, right]
+fps: 30
+splits: [clean, randomized]
