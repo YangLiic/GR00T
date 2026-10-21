@@ -184,6 +184,7 @@ class BasicTransformerBlock(nn.Module):
         encoder_hidden_states: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         temb: Optional[torch.LongTensor] = None,
+        robottt_context=None,
     ) -> torch.Tensor:
         # 0. Self-Attention
         if self.norm_type == "ada_norm":
@@ -204,6 +205,11 @@ class BasicTransformerBlock(nn.Module):
             )
         if self.final_dropout:
             attn_output = self.final_dropout(attn_output)
+
+        if hasattr(self, "robottt"):
+            if robottt_context is None:
+                raise RuntimeError("RoboTTT block called without recurrent memory context")
+            attn_output = robottt_context.apply(self.robottt, attn_output)
 
         hidden_states = attn_output + hidden_states
         if hidden_states.ndim == 4:
@@ -296,6 +302,7 @@ class DiT(ModelMixin, ConfigMixin):
         timestep: Optional[torch.LongTensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         return_all_hidden_states: bool = False,
+        robottt_context=None,
     ):
         # Encode timesteps
         temb = self.timestep_encoder(timestep)
@@ -315,6 +322,7 @@ class DiT(ModelMixin, ConfigMixin):
                     encoder_hidden_states=None,
                     encoder_attention_mask=None,
                     temb=temb,
+                    robottt_context=robottt_context,
                 )
             else:
                 hidden_states = block(
@@ -323,6 +331,7 @@ class DiT(ModelMixin, ConfigMixin):
                     encoder_hidden_states=encoder_hidden_states,
                     encoder_attention_mask=None,
                     temb=temb,
+                    robottt_context=robottt_context,
                 )
             all_hidden_states.append(hidden_states)
 
@@ -355,6 +364,7 @@ class AlternateVLDiT(DiT):
         return_all_hidden_states: bool = False,
         image_mask: Optional[torch.Tensor] = None,
         backbone_attention_mask: Optional[torch.Tensor] = None,
+        robottt_context=None,
     ):
         assert image_mask is not None, "Image mask is required"
 
@@ -385,6 +395,7 @@ class AlternateVLDiT(DiT):
                     encoder_hidden_states=None,
                     encoder_attention_mask=None,
                     temb=temb,
+                    robottt_context=robottt_context,
                 )
             else:
                 # Cross-attention blocks - alternate between non-image and image tokens
@@ -401,6 +412,7 @@ class AlternateVLDiT(DiT):
                     encoder_hidden_states=encoder_hidden_states,
                     encoder_attention_mask=curr_encoder_attention_mask,
                     temb=temb,
+                    robottt_context=robottt_context,
                 )
             all_hidden_states.append(hidden_states)
 

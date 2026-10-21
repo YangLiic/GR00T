@@ -120,6 +120,17 @@ class FinetuneConfig:
     If None, no extra augmentations are applied.
     """
 
+    # --- RoboTTT sequence training (opt-in) ---
+    robottt_enabled: bool = False
+    robottt_train_mode: str = "posttrain"  # "memory" freezes the original VLA
+    robottt_context_length: int = 1024
+    robottt_chunk_stride: int = 0  # 0 = the configured action horizon
+    robottt_tbptt_steps: int = 4
+    robottt_num_register_tokens: int = 16
+    robottt_hidden_dim: int = 768
+    robottt_inner_lr: float = 0.1
+    robottt_loss_mask_column: str | None = None
+
     # --- Training Configuration ---
     global_batch_size: int = 64
     """Total batch summed across all GPUs in one forward/backward, BEFORE

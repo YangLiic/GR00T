@@ -95,13 +95,18 @@ class Gr00tN1d7Pipeline(ModelPipeline):
                 backbone_trainable_params_fp32=self.config.model.backbone_trainable_params_fp32,
                 load_bf16=self.config.model.load_bf16,
                 transformers_loading_kwargs=self.transformers_loading_kwargs,
+                **{
+                    key: getattr(self.config.model, key)
+                    for key in self.config.model.__dataclass_fields__
+                    if key.startswith("robottt_")
+                },
                 output_loading_info=True,
                 **self.transformers_loading_kwargs,
             )
 
             missing_keys = loading_info.get("missing_keys", [])
             mask_token_missing = any("mask_token" in key for key in missing_keys)
-            if mask_token_missing and model.action_head.mask_token is not None:
+            if mask_token_missing and getattr(model.action_head, "mask_token", None) is not None:
                 with torch.no_grad():
                     model.action_head.mask_token.data.copy_(
                         0.02 * torch.randn_like(model.action_head.mask_token)
@@ -111,6 +116,11 @@ class Gr00tN1d7Pipeline(ModelPipeline):
             unexpected_keys = loading_info.get("unexpected_keys", [])
             mismatched_keys = loading_info.get("mismatched_keys", [])
             other_missing = [k for k in missing_keys if "mask_token" not in k]
+            if self.config.model.robottt_enabled:
+                from .robottt_action_head import initialize_missing_memory
+
+                initialize_missing_memory(model, other_missing)
+                other_missing = []
             errors = []
             if other_missing:
                 errors.append(f"Missing keys ({len(other_missing)}): {other_missing}")
@@ -129,6 +139,11 @@ class Gr00tN1d7Pipeline(ModelPipeline):
                 self.config.model,
                 transformers_loading_kwargs=self.transformers_loading_kwargs,
             )
+
+        if self.model_config.robottt_enabled:
+            from .robottt_action_head import configure_robottt_training
+
+            configure_robottt_training(model)
 
         want_horizon = int(self.model_config.action_horizon)
         loaded_horizon = int(getattr(model.config, "action_horizon", want_horizon))
@@ -252,10 +267,18 @@ class Gr00tN1d7Pipeline(ModelPipeline):
                     json.dump(stats_dict, f, indent=2)
                 logging.info("Saved dataset statistics for inference")
 
+        if self.model_config.robottt_enabled:
+            from gr00t.data.dataset.robottt_sequence_dataset import RoboTTTSequenceDataset
+
+            train_dataset = RoboTTTSequenceDataset(train_dataset, self.model_config)
         return train_dataset, eval_dataset
 
     def _create_collator(self):
         data_collator = self.processor.collator
+        if self.model_config.robottt_enabled:
+            from gr00t.data.dataset.robottt_sequence_dataset import RoboTTTSequenceCollator
+
+            data_collator = RoboTTTSequenceCollator(data_collator)
         return data_collator
 
 

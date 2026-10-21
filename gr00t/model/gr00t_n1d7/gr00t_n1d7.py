@@ -35,7 +35,6 @@ from gr00t.model.modules.embodiment_conditioned_mlp import (
 logger = logging.getLogger(__name__)
 
 
-
 def _exsched_tau_nodes(default_steps: int):
     """Custom Euler schedule for inference, from ``GR00T_TAU_NODES``.
 
@@ -429,8 +428,8 @@ class Gr00tN1d7ActionHead(nn.Module):
         for t in range(_n_steps):
             # Uniform by default (0, 1/N, 2/N, ...); the tau nodes replace *where* the
             # velocity is sampled and *how far* each Euler step carries, nothing else.
-            t_cont = (_tau[t] if _tau is not None else t / float(self.num_inference_timesteps))
-            dt_t = ((_tau[t + 1] - _tau[t]) if _tau is not None else dt)
+            t_cont = _tau[t] if _tau is not None else t / float(self.num_inference_timesteps)
+            dt_t = (_tau[t + 1] - _tau[t]) if _tau is not None else dt
             t_discretized = int(t_cont * self.num_timestep_buckets)
 
             # Embed noised action trajectory.
@@ -580,7 +579,12 @@ class Gr00tN1d7(PreTrainedModel):
         )
 
         # Initialize action head
-        self.action_head = Gr00tN1d7ActionHead(config)
+        if config.robottt_enabled:
+            from .robottt_action_head import RoboTTTActionHead
+
+            self.action_head = RoboTTTActionHead(config)
+        else:
+            self.action_head = Gr00tN1d7ActionHead(config)
 
         self.collator = Gr00tN1d7DataCollator(
             model_name=vlm_name,
@@ -631,12 +635,25 @@ class Gr00tN1d7(PreTrainedModel):
         Returns:
             BatchFeature containing loss and other outputs
         """
+        if "robottt_sequence" in inputs:
+            if not self.config.robottt_enabled:
+                raise ValueError("Sequence input requires robottt_enabled=True")
+            numerator = None
+            for step in inputs["robottt_sequence"]:
+                output = self.forward(step)
+                numerator = (
+                    output["loss_sum"] if numerator is None else numerator + output["loss_sum"]
+                )
+            if numerator is None:
+                raise ValueError("Empty RoboTTT segment")
+            return {"loss": numerator / inputs["robottt_normalizer"]}
+
         # Prepare inputs for backbone and action head
         backbone_inputs, action_inputs = self.prepare_input(inputs)
         backbone_outputs = self.backbone(backbone_inputs)
         action_outputs = self.action_head(backbone_outputs, action_inputs)
 
-        return action_outputs
+        return dict(action_outputs) if self.config.robottt_enabled else action_outputs
 
     def get_action(self, inputs: dict, options: dict[str, Any] | None = None) -> BatchFeature:
         """

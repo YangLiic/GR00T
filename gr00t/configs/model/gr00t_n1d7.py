@@ -119,6 +119,19 @@ class Gr00tN1d7Config(PretrainedConfig):
     exclude_state: bool = False  # Zero out all state inputs (ablation)
     use_mean_std: bool = False  # Use mean/std normalization instead of min/max
 
+    # RoboTTT is opt-in; baseline checkpoints retain the original execution path.
+    robottt_enabled: bool = False
+    robottt_num_register_tokens: int = 16
+    robottt_hidden_dim: int = 768  # reference choice; paper does not disclose this width
+    robottt_inner_lr: float = 0.1
+    robottt_gate_init: float = 0.001
+    robottt_rope_theta: float = 10000.0
+    robottt_context_length: int = 1024  # physical timesteps, not token count
+    robottt_chunk_stride: int = 0  # 0 uses action_horizon
+    robottt_tbptt_steps: int = 4  # observation/chunk steps per backward segment
+    robottt_train_mode: str = "posttrain"
+    robottt_loss_mask_column: str | None = None
+
     # Multi-embodiment parameters
     max_num_embodiments: int = 32
 

@@ -13,11 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# ruff: noqa: E402  # portable-runtime site setup must precede third-party imports
 # Launch finetuning for N1.7 on "single node".
 # This script tries to provide a similar user experience as current OSS.
 
-import site
 from pathlib import Path
+import site
+import sys
+
+
+# The RoboTTT worktree shares a venv whose editable install points at the baseline.
+# Resolve imports from this checkout rather than silently training the old model.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 # Portable CPython + PYTHONPATH=site-packages does not process .pth files.
 # setuptools' distutils shim (needed by DeepSpeed on 3.12) lives in one.
@@ -118,7 +125,9 @@ if __name__ == "__main__":
     # Path must contain "nvidia/Cosmos-Reason2" (get_backbone_cls). Prefer a
     # local tree so A800/Licheng can load offline without a Hub snapshot.
     cosmos_env = os.environ.get("GR00T_COSMOS_MODEL_NAME")
-    cosmos_local = Path(__file__).resolve().parents[2] / "checkpoints" / "nvidia" / "Cosmos-Reason2-2B"
+    cosmos_local = (
+        Path(__file__).resolve().parents[2] / "checkpoints" / "nvidia" / "Cosmos-Reason2-2B"
+    )
     if cosmos_env:
         config.model.model_name = cosmos_env
     elif (cosmos_local / "config.json").exists():
@@ -183,5 +192,29 @@ if __name__ == "__main__":
     config.training.save_only_model = ft_config.save_only_model
     config.training.resume_from_checkpoint = ft_config.resume_from_checkpoint
     config.training.skip_weight_loading = ft_config.skip_weight_loading
+
+    if ft_config.robottt_enabled:
+        config.model.action_horizon = data_action_horizon
+        for key in ft_config.__dataclass_fields__:
+            if key.startswith("robottt_"):
+                setattr(config.model, key, getattr(ft_config, key))
+        if config.model.robottt_train_mode not in {"memory", "posttrain"}:
+            raise ValueError("RoboTTT mode must be memory or posttrain")
+        if config.model.robottt_train_mode == "memory":
+            config.model.tune_llm = False
+            config.model.tune_visual = False
+            config.model.tune_projector = False
+            config.model.tune_diffusion_model = False
+            config.model.tune_vlln = False
+        config.training.use_ddp = True
+        config.training.gradient_checkpointing = False
+        config.training.remove_unused_columns = False
+        config.training.lr_scheduler_type = "cosine"
+        if config.model.robottt_tbptt_steps < 1 or config.model.robottt_context_length < 1:
+            raise ValueError("RoboTTT context length and TBPTT steps must be positive")
+        if config.training.fp16:
+            raise ValueError(
+                "RoboTTT reference training uses fp32 fast weights with fp32/bf16 outer computation"
+            )
 
     run(config)

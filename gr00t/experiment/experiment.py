@@ -293,17 +293,24 @@ def run(config: Config):
         report_to="wandb" if config.training.use_wandb else "none",
         seed=config.data.seed,
         deepspeed=deepspeed_config,
-        ddp_find_unused_parameters=False,
+        ddp_find_unused_parameters=bool(getattr(config.model, "robottt_enabled", False)),
         ddp_bucket_cap_mb=config.training.ddp_bucket_cap_mb,
         eval_strategy=config.training.eval_strategy,
         eval_steps=config.training.eval_steps,
         batch_eval_metrics=True,
-        remove_unused_columns=config.training.remove_unused_columns,
-        ignore_data_skip=True,
+        remove_unused_columns=False
+        if getattr(config.model, "robottt_enabled", False)
+        else config.training.remove_unused_columns,
+        ignore_data_skip=not bool(getattr(config.model, "robottt_enabled", False)),
     )
 
     # Create trainer
-    trainer = Gr00tTrainer(
+    trainer_class = Gr00tTrainer
+    if getattr(config.model, "robottt_enabled", False):
+        from gr00t.experiment.robottt_trainer import RoboTTTTrainer
+
+        trainer_class = RoboTTTTrainer
+    trainer = trainer_class(
         model=model,
         args=training_args,
         train_dataset=train_dataset,

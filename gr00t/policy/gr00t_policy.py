@@ -512,6 +512,9 @@ class Gr00tPolicy(BasePolicy):
         Returns:
             Dictionary containing the info after resetting the policy
         """
+        head = getattr(self.model, "action_head", None)
+        if head is not None and hasattr(head, "reset_memory"):
+            head.reset_memory()
         return {}
 
 

@@ -181,3 +181,9 @@ offline_open_loop_eval_plots/
 *.py.pre_*
 *.py.bak-*
 *.sh.pre_*
+
+# Local development worktree links and macOS archive metadata
+/.venv
+/checkpoints
+/.hf_home
+._*
